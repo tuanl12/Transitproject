@@ -15,14 +15,15 @@ options(mc.cores = parallel::detectCores())
 
 #vector to store the MAPE
 made_err <- rep(0,365)
+mse_err <- rep(0,365)
 #data preparation for inputting into Stan
-for(i in 350:365) {
+for(i in 1:365) {
   nrow = nrow(rte_m[[i]]);
   ncol = ncol(rte_m[[i]]);
   #routing matrix A
   A <- as.matrix(rte_m[[i]]);
   #variance vectors sigma_x, sigma_y for prior and likelihood
-  sigma_x <- as.vector(sample.int(20, nrow(kf_vect[[i]]), replace=TRUE))
+  #sigma_x <- as.vector(sample.int(20, nrow(kf_vect[[i]]), replace=TRUE))
   sigma_y <- as.vector(sample.int(10, nrow(kf_vect[[i]]), replace=TRUE))
   #historical demand
   yH <- as.vector(dh_vect[[i]]$X);
@@ -31,14 +32,14 @@ for(i in 350:365) {
   #difference between A*yT and x
   epsilon <- sample.int(20, nrow(kf_vect[[i]]), replace=TRUE)
   #noise added to the variance of the normal distribution approximation for Poisson.
-  epsilon2 <- runif(nrow(kf_vect[[i]]),0.02, 0.9)
+  #epsilon2 <- runif(nrow(kf_vect[[i]]),0.02, 0.9)
   #obtain the counts data
   x <- round(as.vector(as.matrix(rte_m[[i]])%*%yT) + epsilon)
-  iterations = 250;
+  iterations = 100;
   
   #input our Stan model file "stamodeling.stan" (for the two cases when likelihood ~ Normal) 
   #into the object called "stanmodel1" 
-  stanmodel1 <- stan_model(file = "stamodeling.stan",
+  stanmodel1 <- stan_model(file = "poissnorm.stan",
                            model_name = "stanmodel1");
   
   #Hamiltonian Monte Carlo to generate posterior distribution. Iter = # of iterations per one MCMC chain, chains = number of chains performed by MCMC
@@ -58,14 +59,15 @@ for(i in 350:365) {
   #and simulated true demand yT 
   plot(colMeans(posterior_yTtheta[,3,]),col=1, type = 'l', ylab="d", xlab = "Zone index")
   lines(yT,col=2, type = 'l', ylab = "d")
-  lines(mean_kf[[i]], col=3, type = 'l', ylab = "d")
+  #lines(mean_kf[[i]], col=3, type = 'l', ylab = "d")
   #choose one of these two depending on specific prior-likelihood
-  #legend(x = "topleft",legend = c("recovered", "true"), col=1:2, lty=c(1,1))
-  legend(x = "topleft",legend = c("recovered", "true", "Kalman-Filter"), col=1:3, lty=c(1,1,1))
+  legend(x = "topleft",legend = c("recovered", "true"), col=1:2, lty=c(1,1))
+  #legend(x = "topleft",legend = c("recovered", "true", "Kalman-Filter"), col=1:3, lty=c(1,1,1))
   
   #compute MAPE
   made_err[i] <- (mean(abs((colMeans(posterior_yTtheta[,3,]) - yT)/yT)))*100
-
+  #compute MSE
+  mse_err[i] <- mean((colMeans(posterior_yTtheta[,3,]) - yT[1])^2)
   #generate all the histograms for each component of the estimated demand vector d   
   for(j in 1:dim(posterior_yTtheta)[3]){
     file_name11 = vector("list", nrow(rte_m[[i]]))
