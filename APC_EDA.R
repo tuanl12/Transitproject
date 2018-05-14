@@ -1,3 +1,4 @@
+#install all essential packages
 install.packages("tidyverse")
 install.packages("hash")
 install.packages("ggmap")
@@ -5,11 +6,8 @@ install.packages("ddply")
 install.packages("ggproto")
 install.packages("chron")
 install.packages("scales")
-install.packages("RcppCNPy")
-install.packages("ptinpoly")
-install.packages("SDMTools")
-install.packages("bigmemory")
 
+#load all these libraries just in case!
 library(hash)
 library(tidyverse)
 library(ggmap)
@@ -17,22 +15,9 @@ library(ggplot2)
 library(lubridate)
 library(xts)
 library(chron)
-library(RcppCNPy)
-# library(clusterGeneration)
-# library(MASS)
 library(dplyr)
-library(geosphere)
-library(SDMTools)
 
-#d = read.csv("/Users/tuanle/James Garner - IBS_APC_Oct2016_NW.txt", sep = '\t', stringsAsFactors = F)
-
-# d = read.csv("/Users/tuanle/James Garner - IBS_APC_Oct2016_NW.txt", sep = ',', stringsAsFactors = F)
-# d1 = read.csv("/Users/tuanle/IBS APC Jan-Mar 2015.txt", sep = ',', stringsAsFactors = F, header = F)
-# d2 = read.csv("/Users/tuanle/IBS APC Apr-Jun 2015.txt", sep = ',', stringsAsFactors = F, header = F)
-# d3 = read.csv("/Users/tuanle/IBS APC Jul-Sep 2015.txt", sep = ',', stringsAsFactors = F, header = F)
-# d4 = read.csv("/Users/tuanle/IBS APC Oct 2015.txt", sep = ',', stringsAsFactors = F, header = F)
-# d5 = read.csv("/Users/tuanle/IBS APC Nov-Dec 2015.txt", sep = ',', stringsAsFactors = F, header = F)
-
+#create an APC dataset with column headers and data types in each column.
 apc =data.frame(
   Date=character(),
   DOW=character(),
@@ -53,6 +38,7 @@ apc =data.frame(
   stringsAsFactors=FALSE
 )
 
+#read all the data files with the filename ending in "2015.txt" and combine it into the data frame called apc.
 fl=list.files(".", pattern="2015.txt")
 for (fn in fl) {
   print(fn)
@@ -61,6 +47,7 @@ for (fn in fl) {
   apc = rbind(apc,d[,1:16])
 }
 
+#rename all the columns' names for easy interpretation and data manipulation
 apc = dplyr::rename(apc, Date = X1 , DOW = X2, Block = X3, Run = X4, Route = X5, Direction = X6, Trip_ID = X7, 
                        order_numb = X8,  Stop_Name = X9, Stop_Sequence = X10, Lat = X11, Long = X12,  ON = X13, OFF = X14, Load = X15, BusID = X16)
 d = apc
