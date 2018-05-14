@@ -1,3 +1,4 @@
+#should install all of these packages
 install.packages("ggmap")
 install.packages("ggplot2")
 install.packages("ggproto")
@@ -5,6 +6,7 @@ install.packages("chron")
 install.packages("scales")
 install.packages(c("dbplyr", "RSQLite"))
 
+#load all of this libraries
 library(ggmap)
 library(tidyverse)
 library(ggplot2)
@@ -15,6 +17,7 @@ library(reshape)
 library(reshape2)
 setwd("~/Dropbox/proj/fta/")
 
+#From here to line 58 - read all the data files input of ventra and combine them into 1 giant data frames with 88 columns
 d_ventra1 = read_delim("/Users/tuanle/20160301_20160331_vp080_ncs_tran_extract_0001.dat", delim = "|",quote = '"', col_names=F, col_types = cols(.default = "c"))
 d_ventra2 = read_delim("/Users/tuanle/20160301_20160331_vp080_ncs_tran_extract_0002.dat", delim = "|",quote = '"', col_names=F,col_types = cols(.default = "c"))
 d_ventra3 = read_delim("/Users/tuanle/20160301_20160331_vp080_ncs_tran_extract_0003.dat", delim = "|",quote = '"', col_names=F, col_types = cols(.default = "c"))
@@ -62,48 +65,46 @@ total_list <- rbind(d_ventra1,d_ventra2,d_ventra3, d_ventra4, d_ventra5, d_ventr
                     d_ventra_abp27[,1:88], d_ventra_abp28[,1:88], d_ventra_abp29[,1:88])
 total_list <- total_list[, colSums(is.na(total_list)) != nrow(total_list)]
 total_list <- total_list[, colSums(is.na(total_list)) == 0]
+#eliminate all cash transactions out of the dataset
 total_list2 <- total_list[!(total_list$X33 == "No Payment"),]
 
+#rename the column headers for easy interpretation and data manipulation
 d1 = dplyr::rename(total_list, lat="X3", lon="X4", DW_TRANSACTION_ID=X1, DEVICE_ID=X2, BENEFIT_VALUE=X5, TRANSACTION_DTM=X64, PACE_RUN_ID=X20, DIRECTION=X58, START_TIME=X61, TRIP_TYPE=X71, Hour=X24, Count=X19,ROUTE_Number=X51, COST=X26, Facility=X12, Trans_status=X33, OPERATOR=X47, STOP=X50, PREV_LATITUDE=X76, PREV_LONGITUDE=X77, CARD_TYPE=X46)
+#create a column that denotes whether a transaction is paid by cash or not
 d1$CASH_YESNO <- ifelse(d1$Trans_status == "No Payment", "YES", "NO")
-
+#rename column header of data frame total_list2
 d1_new = dplyr::rename(total_list2, lat=X3, lon=X4, DW_TRANSACTION_ID=X1, DEVICE_ID=X2, BENEFIT_VALUE=X5, TRANSACTION_DTM=X64, PACE_RUN_ID=X20, DIRECTION=X58, START_TIME=X61, TRIP_TYPE=X71, Hour=X24, Count=X19,ROUTE_Number=X51, COST=X26, Facility=X12, Trans_status=X33, OPERATOR=X47, STOP=X49, PREV_LATITUDE=X76, PREV_LONGITUDE=X77, CARD_TYPE=X46)
+#select a subset of d1 with only columns essential to our EDA defined as in col_title
 col_title <- c("lat", "lon", "START_TIME", "DIRECTION", 
           "Hour", "TRIP_TYPE", "STOP", "COST", "Count", "ROUTE_Number", "Trans_status")
 d1 =  d1[col_title]
 d1_new = d1_new[col_title]
+#obtain the hour of each trip
 d1$Hour <- substr(d1$Hour,1,2) 
 d1_new$Hour <- substr(d1_new$Hour,1,2)
+#obtain the start time in hour of each trip
 d1$START_TIME <- substr(d1$START_TIME,6,10)
 d1_new$START_TIME <- substr(d1_new$START_TIME,6, 10)
 
+#convert lat-lon into numeric type
 d1 = mutate(d1, lat = as.numeric(lat))
 d1_new = mutate(d1_new, lat = as.numeric(lat))
 d1 = mutate(d1, lon = as.numeric(lon))
 d1_new = mutate(d1_new, lon = as.numeric(lon))
+#divide them by 1e6 to convert into decimal numbers
 d1$lat <- as.numeric(d1$lat)/1e6
 d1_new$lat <- as.numeric(d1_new$lat)/1e6
 d1$lon <- as.numeric(d1$lon)/1e6
 d1_new$lon <- as.numeric(d1_new$lon)/1e6
 
+#eliminate all the rows with missing lat-lon (both "NA")
 d1 <- d1[!(is.na(d1$lat)) & !(is.na(d1$lon)),]
+#narrow down the dataset into only those with lat >20 and lon <-86 in order to plot the area concentrated the most number of bus stops
 d1 = d1 %>% filter(lat > 20, lon < - 86)
 d1_new = d1_new %>% filter(lat>41, lon<-85)
 
-stops <- read_delim("/Users/tuanle/stop_zone.csv", delim = ",", quote = '', col_names = FALSE, col_types = cols(.default = "c"))
-stops <- stops[, c("X3", "X5", "X6", "X8")]
-d1["ZONE"] <- NA
-#eliminate all duplicated transaction for storing repriced trip data
-d1_valid <- d1[d1$Trans_status != "Transaction created to store repriced trip data",]
-#assign zones to corresponding bus stops
-#for (i in seq_len(length(d1_valid$lat))){
-    for(k in (2:length(stops$X5))){
-      if(d1_valid$lat[3] == as.numeric(stops$X5[k]) && d1_valid$lon[3] == as.numeric(stops$X6[k])){
-        d1_valid$ZONE[3] <- stops$X8[k]
-      } 
-    }
-#}
 require(ggmap)
+#visualize the locations of our stops on google map
 stops = d1 %>% select(lat,lon) %>% distinct()
 sbbox <- make_bbox(lon = as.numeric(stops$lon), lat = as.numeric(stops$lat), f = .05)
 sq_map <- get_map(location = sbbox, source = "google")
@@ -137,6 +138,7 @@ ggplot() +
     geom="point", 
     position=position_jitter()
   )
+#convert all char type to numeric type for Cout, Hour, Trip Type, STOP, Cost, and Route number
 d1$Count <- as.numeric(d1$Count)
 d1$Hour <- as.numeric(d1$Hour)
 d1$TRIP_TYPE <- as.numeric(d1$TRIP_TYPE)
@@ -171,6 +173,7 @@ ON_SUM2_new = d3_new %>% group_by(START_TIME) %>% summarize(n=n(), sum = sum(as.
 ON_AVG2 = d3 %>% group_by(substr(START_TIME,4,5)) %>% summarize(n=n(), mean = mean(as.numeric(Count)))
 ON_AVG2_new = d3_new %>% group_by(START_TIME) %>% summarize(n=n(), mean = mean(as.numeric(Count)))
 
+#two bar plots for average and total ON counts per hour of day with old dataset
 par(mfrow = c(2,1))
 TOTAL_VENTRAON <- ON_SUM$sum
 MEAN_VENTRAON <- ON_AVG$mean
@@ -178,17 +181,17 @@ Hourofday <- ON_AVG$Hour
 ggplot(ON_AVG,aes(y= MEAN_VENTRAON, x = Hourofday)) + geom_bar(stat="identity") + ggtitle("Average on-boarding passengers per hour of a day") 
 ggplot(ON_SUM,aes(y= TOTAL_VENTRAON, x = ON_SUM$Hour)) + geom_bar(stat="identity") + ggtitle("Total on-boarding passengers per hour of a day")
 
-#new dataset d2_new
+#create two bar plots for average and total ON counts per hour of a day with new dataset
 par(mfrow = c(2,1))
 TOTAL_VENTRAON_new <- ON_SUM_new$sum
 MEAN_VENTRAON_new <- ON_AVG_new$mean
 Hourofday_new <- ON_AVG_new$Hour
 Hourofday_new2 <- ON_SUM_new$Hour
-ggplot(ON_AVG_new,aes(y= MEAN_VENTRAON_new, x = Hourofday_new)) + geom_bar(stat="identity") + ggtitle("Average on-boarding passengers per hour of a day") 
 
+ggplot(ON_AVG_new,aes(y= MEAN_VENTRAON_new, x = Hourofday_new)) + geom_bar(stat="identity") + ggtitle("Average on-boarding passengers per hour of a day") 
 ggplot(ON_SUM_new,aes(y= TOTAL_VENTRAON_new, x = Hourofday_new2)) + geom_bar(stat="identity") + ggtitle("Total on-boarding passengers per hour of a day") 
 
-#histogram by days of month (March 2016)
+#two bar plots
 par(mfrow = c(2,1))
 TOTAL_VENTRAON2 <- ON_SUM2$sum
 MEAN_VENTRAON2 <- ON_AVG2$mean
@@ -208,16 +211,20 @@ d4 <- d1[order(d1$START_TIME, decreasing=FALSE),]
 d4_new <- d1_new[order(d1_new$START_TIME, decreasing=FALSE),]
 d5 <- d4 %>% select(START_TIME, Count) %>% mutate(weekday = wday(START_TIME, label=TRUE))
 d5_new <- d4_new %>% select(START_TIME, Count) %>% mutate(weekday = wday(START_TIME, label=TRUE))
+#compute total ON count data per days of week
 ON_SUM3 <- d5%>% group_by(weekday) %>%summarize(n=n(), sum=sum(as.numeric(Count)))
 ON_SUM3_new <- d5_new%>% group_by(weekday) %>%summarize(n=n(), sum=sum(as.numeric(Count)))
+#re-order the data frame based on Mon - Sun
 ON_SUM3$weekday <- factor(ON_SUM3$weekday, levels = c("Monday   ","Tuesday  ", "Wednesday","Thursday ","Friday   ", "Saturday ", "Sunday   "))
 ON_SUM3_new$weekday <- factor(ON_SUM3_new$weekday, levels = c("Monday   ","Tuesday  ", "Wednesday","Thursday ","Friday   ", "Saturday ", "Sunday   "))
+#compute average ON count data per days of week
 ON_AVG3 <- d5%>% group_by(weekday) %>%summarize(n=n(), mean=mean(as.numeric(Count)))
 ON_AVG3_new <- d5_new%>% group_by(weekday) %>%summarize(n=n(), mean=mean(as.numeric(Count)))
+#re-order the data frame based on Mon - Sun
 ON_AVG3$weekday <- factor(ON_AVG3$weekday, levels = c("Mon","Tue", "Wed","Thu", "Fri", "Sat","Sun"))
 ON_AVG3_new$weekday<- factor(ON_AVG3_new$weekday, levels = c("Mon","Tue", "Wed","Thu", "Fri", "Sat","Sun"))
 
-#histograms by day of week
+#two bar plots of total and mean ON counts per days of a week
 par(mfrow = c(2,1))
 TOTAL_VENTRAON3 <- ON_SUM3$sum
 MEAN_VENTRAON3 <- ON_AVG3$mean
@@ -225,6 +232,7 @@ Dayofweek <- ON_AVG3$weekday
 ggplot(data = ON_AVG3,aes(y= MEAN_VENTRAON3, x = Dayofweek)) + geom_bar(stat="identity") + ggtitle("Average on-boarding passengers per each day of week") 
 ggplot(data = ON_SUM3,aes(y= TOTAL_VENTRAON3, x = Dayofweek)) + geom_bar(stat="identity") + ggtitle("Total on-boarding passengers per each day of week") 
 
+#two bar plots of total and mean ON counts per days of a week - different dataset
 par(mfrow = c(2,1))
 TOTAL_VENTRAON3_new <- ON_SUM3_new$sum
 MEAN_VENTRAON3_new <- ON_AVG3_new$mean
@@ -236,7 +244,7 @@ ggplot(data = ON_SUM3_new,aes(y= TOTAL_VENTRAON3_new, x = Dayofweek_new)) + geom
 SUM_DOM =  d1 %>% group_by(ROUTE_Number, START_TIME) %>% summarize(n = n(), sum = sum(as.numeric(Count)))
 AVG_DOM =  d1 %>% group_by(ROUTE_Number, START_TIME) %>% summarize(n = n(), mean = mean(as.numeric(Count)))
 
-#Histograms of total and average on-boarding passsengers per route per each day of March 2016
+#Bar plots of total ON counts in each route per each day of March 2016
 plot_list = list()
 for (i in unique(SUM_DOM$ROUTE_Number)) {
   newdata <- subset(SUM_DOM, SUM_DOM$ROUTE_Number == as.character(i))
@@ -249,7 +257,7 @@ for (i in unique(SUM_DOM$ROUTE_Number)) {
   print(plot_list[[i]])
   dev.off()
 }
-
+# create bar plots for average ON counts in route i per each day of the month
 plot_list2 = list()
 for (i in unique(AVG_DOM$ROUTE_Number)) {
   newdata2 <- subset(AVG_DOM, AVG_DOM$ROUTE_Number == as.character(i))
@@ -267,7 +275,7 @@ for (i in unique(AVG_DOM$ROUTE_Number)) {
 SUM_HOD =  d1 %>% group_by(ROUTE_Number, Hour) %>% summarize(n = n(), sum = sum(as.numeric(Count)))
 AVG_HOD =  d1 %>% group_by(ROUTE_Number, Hour) %>% summarize(n = n(), mean = mean(as.numeric(Count)))
 
-#Histograms of total and average on-boarding passsengers per route per hour of day
+#Bar plots of total ON counts in each route i across different hours of a day
 plot_list3 = list()
 for (i in unique(SUM_HOD$ROUTE_Number)) {
   newdata <- subset(SUM_HOD, SUM_HOD$ROUTE_Number == as.character(i))
@@ -280,7 +288,7 @@ for (i in unique(SUM_HOD$ROUTE_Number)) {
   print(plot_list3[[i]])
   dev.off()
 }
-
+#create every bar plots for average ON count in each route across hours of a day
 plot_list4 = list()
 for (i in unique(AVG_HOD$ROUTE_Number)) {
   newdata2 <- subset(AVG_HOD, AVG_HOD$ROUTE_Number == as.character(i))
@@ -295,13 +303,13 @@ for (i in unique(AVG_HOD$ROUTE_Number)) {
 }
 
 d6 <- d4 %>% select(ROUTE_Number, START_TIME, Count, lat, lon) %>% mutate(weekday = wday(START_TIME, label=TRUE))
-
+#aggregate total and ON count data per each route per each day of week
 ON_SUM4 <- d6%>% group_by(ROUTE_Number, weekday) %>%summarize(n=n(), sum=sum(as.numeric(Count)))
 ON_SUM4$weekday <- factor(ON_SUM4$weekday, levels = c("Mon","Tue", "Wed","Thu", "Fri", "Sat","Sun"))
 ON_AVG4 <- d6%>% group_by(ROUTE_Number,weekday) %>%summarize(n=n(), mean=mean(as.numeric(Count)))
 ON_AVG4$weekday <- factor(ON_AVG4$weekday, levels = c("Mon","Tue", "Wed","Thu", "Fri", "Sat","Sun"))
 
-#Histograms of total and average on-boarding passsengers per route per days of week
+#Create every bar plots of total and average on-boarding passsengers per route per days of week
 plot_list5 = list()
 for (i in unique(ON_SUM4$ROUTE_Number)) {
   newdata <- subset(ON_SUM4, ON_SUM4$ROUTE_Number == i)
@@ -551,212 +559,5 @@ ggplot(data = d15, aes(x = factor(START_TIME), y = mean, fill = TRIP_TYPE)) + ge
 #barplot for total trip types per days of month
 ggplot(as.data.frame(tbl4), aes(x = factor(START_TIME), Freq, fill = TRIP_TYPE)) + geom_bar(stat = "identity") + labs(x = "Hour", y = "Total Number of Trips", title = "Barplot for total number of trip types per days of month")
 
-# #bar plot for total trip types per hours of day
-# library(reshape2)
-# d12 <- d11 %>% group_by(TRIP_TYPE, Hour) %>% summarize(n=n())
-# d12 <- melt(data = d12)
-# ggplot(data = d12, aes(x = factor(Hour), y = value, fill = TRIP_TYPE)) +     
-#   geom_col(position = 'dodge') + labs(x = "Hour",
-#                                       y = "Total trips",title = "Bar plot for trip types per hour") 
-
-d_stop = read.csv("/Users/tuanle/stops.txt", sep = ',', stringsAsFactors = F)
-d_stop <- t(na.omit(t(d_stop)))
-colnames(d_stop)[3] <- "lat"
-colnames(d_stop)[4] <- "lon"
-d_stop <- as.data.frame(d_stop)
-library(data.table)
 
 
-ventra=data.frame(
-  DW_TRANSACTION_ID=character(),
-  DEVICE_ID=character(),
-  LATITUDE=character(),
-  LONGITUDE=character(),
-  BENEFIT_VALUE=double(),
-  BUS_ID=double(),
-  CARD_KEY=double(),
-  CARD_SEQUENCE_NBR=double(),
-  CELLULAR_CONNECTION_STATUS=double(),
-  CELLULAR_SIGNAL_STRENGTH=double(),
-  FACILITY_ID=double(),
-  FACILITY_NAME=character(),
-  FARE_TABLE_ID=double(),
-  PATRON_COUNT=double(),
-  POSTING_DAY_KEY=double(),
-  RENEWED_IN_ADVANCE=double(),
-  RIDES_REMAINING=double(),
-  PAYGO_RIDE_COUNT=double(),
-  RIDE_COUNT=double(),
-  PACE_RUN_ID=character(),
-  SERIAL_NBR=character(),
-  SOURCE=character(),
-  SV_ADJUSTED_TXN=double(),
-  TIME_INCREMENT_KEY=character(),
-  TIME_PERIOD_KEY=double(),
-  TOTAL_COST=double(),
-  TRANSACTION_ID=double(),
-  TRANSFER_CODE=double(),
-  TRANSFER_COUNT=double(),
-  TRANSIT_ACCOUNT_ID=double(),
-  TRANSIT_DAY_KEY=double(),
-  TXN_DESC=character(),
-  TXN_STATUS_DESC=character(),
-  TXN_STATUS_NAME=character(),
-  VALUE_CHANGED=double(),
-  VALUE_REMAINING=double(),
-  FARE_PROD_ID=double(),
-  FARE_PROD_NAME=character(),
-  RIDER_CLASS_ID=double(),
-  RIDER_CLASS_NAME=character(),
-  TICKET_TYPE_ID=double(),
-  TICKET_TYPE_NAME=character(),
-  FARE_PROD_CATEGORY_NAME=character(),
-  LAST_USE_OPERATOR_KEY=double(),
-  MEDIA_TYPE_ID=double(),
-  MEDIA_TYPE_NAME=character(),
-  OPERATOR_ID=double(),
-  OPERATOR_NAME=character(),
-  PREVIOUS_STOP_POINT_KEY=double(),
-  ROUTE_DESC=character(),
-  ROUTE_number=double(),
-  BANKCARD_PAYMENT_VALUE=double(),
-  FARE_DUE=double(),
-  MULTI_RIDE_ID=double(),
-  PASS_COST=double(),
-  PASS_USE_COUNT=double(),
-  SETTLEMENT_DAY_KEY=double(),
-  TRIP_INFO_DIRECTION=character(),
-  TAP_ID=double(),
-  TRIP_PRICE_COUNT=double(),
-  TRANSACTION_DTM=character(),
-  SOURCE_INSERTED_DTM=character(),
-  STAGING_INSERTED_DTM=character(),
-  EDW_INSERTED_DTM=character(),
-  SOURCE_TRIP_PRICED_DTM=character(),
-  PRICED_DTM=character(),
-  SETTLEMENT_DAY_KEY_SET_DTM=character(),
-  JOURNEY_START_DTM=character(),
-  PATRON_TRIP_ID=double(),
-  PATRON_JOURNEY_ID=double(),
-  TRANSFER_SEQUENCE_NBR=double(),
-  TRANSFER_FLAG=double(),
-  FIRST_PREV_OPERATOR_ID=double(),
-  FIRST_PREV_ROUTE_OR_STATION=character(),
-  FIRST_PREV_TRANSACTION_DTM=character(),
-  FIRST_PREV_LATITUDE=character(),
-  FIRST_PREV_LONGITUDE=character(),
-  FIRST_PREV_TRANSFER_SEQ_NBR=double(),
-  FIRST_PREV_TRANSFER_FLAG=double(),
-  FIRST_PREV_ROUTE_STATION_DESC=character(),
-  SECOND_PREV_OPERATOR_ID=double(),
-  SECOND_PREV_ROUTE_OR_STATION=character(),
-  SECOND_PREV_TRANSACTION_DTM=character(),
-  SECOND_PREV_LATITUDE=character(),
-  SECOND_PREV_LONGITUDE=character(),
-  SECOND_PREV_TRANSFER_SEQ_NBR=double(),
-  SECOND_PREV_TRANSFER_FLAG=double(),
-  SECOND_PREV_ROUTE_STATION_DESC=character(),
-  stringsAsFactors=FALSE
-)
-fname=unzip("/Users/tuanle/vp080_oct_2015_abp_extract_0001.zip")
-d = read_delim(fname[1], col_names = F,quote = '"',delim = "|")
-
-fl=list.files(".", pattern=".zip")
-for (fn in fl) {
-  unzip_files=unzip(fn)
-  for (item in unzip_files) {
-    print(item)
-    d = read_delim(item, col_names = F,quote = '"',delim = "|", 
-                  col_types = cols(.default = "c"))
-    ventra = rbind(ventra,d[,1:88])
-    file.remove(item)
-  }
-}
-
-library(dplyr)
-library(RSQLite)
-library(sqldf)
-devtools::install_github("ggrothendieck/sqldf", force = TRUE)
-#con <- DBI::dbConnect(SQLite(), dbname = 'ventra.sqlite')
-#Create an empty SQLite-database
-db <- dbConnect(SQLite(), dbname= "ventra.sqlite")
-#sqldf("SELECT * FROM data_db", dbname = "ventra.sqlite")
-#Paste a table named data_db into the "ventra.sqlite" database
-dbWriteTable(conn = db, name = "data_db", value = data_db, row.names = FALSE, header = TRUE)
-#Test by querying a random column => Work!
-sql1 <- paste("SELECT data_db.TXN_STATUS_DESC FROM data_db", sep="")
-results <- dbGetQuery(db, sql1)
-ventra <- paste("SELECT * FROM data_db", sep ="")
-ventra <- as.data.frame(dbGetQuery(db, ventra))
-#Disconnection from databaset
-dbDisconnect(db)
-# ventra <- as.data.frame(ventra)
-# copy_to(dest = con, df = ventra, name = "ventra", overwrite = T)
-# data_db <-  tbl("select (*) from ventra")
-#data_db <- as.data.frame(ventra)
-#d1_db = dplyr::rename(data_db, lat=X3, lon=X4, DW_TRANSACTION_ID=X1, DEVICE_ID=X2, BENEFIT_VALUE=X5, TRANSACTION_DTM=X64, PACE_RUN_ID=X20, DIRECTION=X58, START_TIME=X61, TRIP_TYPE=X71, Hour=X24, Count=X19,ROUTE_Number=X51, COST=X26, Facility=X12, Trans_status=X33, OPERATOR=X47, STOP=X49, PREV_LATITUDE=X76, PREV_LONGITUDE=X77, CARD_TYPE=X46)
-d1_db = ventra
-d1_db$CASH_YESNO <- ifelse(d1_db$TXN_STATUS_DESC == "No Payment", "YES", "NO")
-col_title <- c("LATITUDE", "LONGITUDE", "TRANSACTION_DTM", "TRIP_INFO_DIRECTION", 
-               "TRANSFER_SEQUENCE_NBR", "PREVIOUS_STOP_POINT_KEY", "TOTAL_COST", "RIDE_COUNT", "ROUTE_number", "TXN_STATUS_DESC", "CASH_YESNO")
-d1_db =  d1_db[col_title]
-d1_db$Hour <- substr(d1_db$TRANSACTION_DTM,12,13) 
-d1_db$TRANSACTION_DTM <- substr(d1_db$TRANSACTION_DTM,6,10)
-d1_db = dplyr::rename(d1_db, lat = LATITUDE, lon = LONGITUDE, date = TRANSACTION_DTM, direction = TRIP_INFO_DIRECTION, 
-                      transfer_status = TRANSFER_SEQUENCE_NBR, prev_stop = PREVIOUS_STOP_POINT_KEY, cost = TOTAL_COST, count = RIDE_COUNT, ROUTE_Number=ROUTE_number,  Trans_status = TXN_STATUS_DESC)
-
-d1_db = mutate(d1_db, lat = as.numeric(lat))
-d1_db = mutate(d1_db, lon = as.numeric(lon))
-d1_db$lat <- as.numeric(d1_db$lat)/1e6
-d1_db$lon <- as.numeric(d1_db$lon)/1e6
-
-d1_db <- d1_db[!(is.na(d1_db$lat)) & !(is.na(d1_db$lon)),] #3.54% of our combined dataset has NA entry in lat or lon
-
-eps = 0.05 #distance between recorded lon and the nearest bus stop, taken from Northwestern's presentation
-for (i in 1:length(d1_db$lat)) {
-    for(j in 1:length(d_stop$lat)) {
-           if(#condition for recorded locations to be within r = 0.05 miles of the nearest bus stops
-             (sqrt((as.numeric(d1_db$lon[i]) - as.numeric(d_stop$lon[j]))^2 
-                         + (as.numeric(d1_db$lat[i]) - as.numeric(d_stop$lat[j]))^2) < eps) 
-             & (abs(as.numeric(d1_db$lon[i]) - as.numeric(d_stop$lon[j])) < eps)
-             & as.numeric(d1_db$lon[i]) > as.numeric(d_stop$lon[j])
-             )
-             {d1_db$stop_name[i] <- as.character(d_stop$stop_name[j])}
-    }
-    d1_db$stop_name[i] <- "NA"
-  }
-
-d2_db = d1_db
-d2_db = d2_db %>% filter(lat > 41, lat < 50, lon > - 90, lon < -70)
-
-require(ggmap)
-stops = d2_db %>% select(lat,lon) %>% distinct()
-sbbox <- make_bbox(lon = as.numeric(stops$lon), lat = as.numeric(stops$lat), f = .05)
-sq_map <- get_map(location = sbbox, source = "google")
-ggmap(sq_map) + geom_point(data = stops, mapping = aes(x = lon, y = lat, color = "red"))
-region <- get_map(location = c(min(d1$lon),
-                               min(d1$lat),
-                               max(d1$lon),
-                               max(d1$lat)),
-                  source = "google")
-
-d3 <- d1_db[order(d1_db$Hour, decreasing=FALSE),]
-#update d3 with subset
-d3 = d3[c("lat", "lon", "Hour", "Count", "ROUTE_Number", "START_TIME")]
-ON_SUM = d3 %>% group_by(Hour) %>% summarize(n=n(), sum = sum(as.numeric(Count)))
-ON_AVG = d3 %>% group_by(Hour, lat, lon) %>% summarize(n=n(), mean = mean(as.numeric(Count)))
-#per day of month
-ON_SUM2 = d3 %>% group_by(substr(START_TIME,4,5)) %>% summarize(n=n(), sum = sum(as.numeric(Count)))
-ON_AVG2 = d3 %>% group_by(substr(START_TIME,4,5)) %>% summarize(n=n(), mean = mean(as.numeric(Count)))
-
-par(mfrow = c(2,1))
-TOTAL_VENTRAON <- ON_SUM$sum
-MEAN_VENTRAON <- ON_AVG$mean
-Hourofday <- ON_AVG$Hour
-ggplot(ON_AVG,aes(y= MEAN_VENTRAON, x = Hourofday)) + geom_bar(stat="identity") + ggtitle("Average on-boarding passengers per hour of a day") 
-ggplot(ON_SUM,aes(y= TOTAL_VENTRAON, x = ON_SUM$Hour)) + geom_bar(stat="identity") + ggtitle("Total on-boarding passengers per hour of a day")
-
-dbDisconnect()
-# library(sqldf)
-# f <- file("20160301_20160331_vp080_abp_tran_extract_0001.dat")
-# system.time(bigdf <- sqldf("select * from f", dbname = tempfile(), file.format = list(header = F, row.names = F)))
