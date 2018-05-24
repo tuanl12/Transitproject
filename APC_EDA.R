@@ -99,77 +99,95 @@ d_zone_ONmonth <- d_zone_ONmonth[complete.cases(d_zone_ONmonth),]
 #create a vector to store routing matrix in each day (365 days in total)
 rte_m <- vector("list", length(unique(d_zone_ON$Date)))
 
-#construct routing matrix A per each day
+#construct routing matrix A per each day. Note that for our dataset, there is no route having a loop, because length(unique(d_zone_ON$X14(d_zone_ON$Date==j)))-length(d_zone_ON$Date==j) = 0 for all j in Date column.
 inx_big = 0
+#running for loop through every unique days in the "d_zone_ON" data frame (there are 365 days)
 for(j in unique(d_zone_ON$Date)){
+  #define the number of rows of routing matrix A, which is equal to the number of elements having a same date "j"
   inx_row <- sum(d_zone_ON$Date== j)
+  #define the index of the list rte_m where each element stores a routing matrix
   inx_big <- inx_big+1
-  rte_m[[inx_big]] <- data.frame(matrix(0, nrow = inx_row, ncol = inx_row))
+  #initiate routing matrix in each day with all entries = 0. Number of columns = number of feasible paths given we have "inx_row" number of elements
+  rte_m[[inx_big]] <- data.frame(matrix(0, nrow = inx_row, ncol = inx_row*(inx_row+1)/2))
+  #obtain the row index of the first and last element of the "Date" column where it equals to a fixed value "j" 
   lb <- min(which(d_zone_ON$Date == j)) 
   ub <- max(which(d_zone_ON$Date == j)) 
+  #running the for loop to construct the column indices of routing matrix A, 
+  #which is created as all the pairs (lb,1),(lb,2),...,(lb, ub), (lb+1, 2),(lb+1, 3),....(lb+1, ub),...(ub-1,ub). 
+  #The last row's entries are all equal to 0, since that is the last entry corresponds to date "j"
   for(i in lb:ub){
     if(i==lb){
-       rte_m[[inx_big]][1,2:(ub-lb+1)] = 1;
-       rte_m[[inx_big]][1,1] = 0;
+       rte_m[[inx_big]][1,1:(ub-lb)] = 1; #first row's entries that are equal to 1 (the remaining are 0 already)
     }
     else if(i<ub && i> lb){
-      rte_m[[inx_big]][i-lb+1, (i-lb+2):(ub-lb+1)] = 1;
-      rte_m[[inx_big]][i-lb+1, 1:(i-lb+1)] = 0;
-    } else {rte_m[[inx_big]][ub-lb+1, ] = 0}
+      #number of entries equal to 1 for all feasible routes that all start with each stop on row "i-lb+1" (e.g: all feasible routes from stop "1000" in date "01-APR").
+      #The formula for lower and upper entries are derived entirely based on mathematics + observations from the dataset.
+      rte_m[[inx_big]][i-lb+1, ((i-lb)*(ub-lb)-(i-lb+1)*(i-lb-2)/2):((i-lb+1)*(ub-lb)-(i-lb+1)*(i-lb)/2)] = 1; 
+    } else {rte_m[[inx_big]][ub-lb+1, ] = 0} #last row's entries are all equal to 0
   }
+  #keep track of the iterations. Warning: size of routing matrix is very big, with the total of (hundreds * hundreds of thousands) entries. 
+  #Rsession crashes sometime!
   print(j)
   print(nrow(rte_m[[inx_big]])) 
   print(ncol(rte_m[[inx_big]]))
 }
 
-#kalman_filter storage vector for 365 days in 2015 (first two) and 12 months (last two)
+#kalman_filter and covariance matrix *list storage* for 365 days in 2015 
 kf_vect <- vector("list", 365)
 cov_m <- vector("list", 365)
-#365 days
+#running the code for 365 days, as each day has different routing matrix
 for(i in 1:365){
-  inx_cov <- nrow(rte_m[[i]])
-  #generate covariance matrix for each day
+  #define the size of the covariance matrix, based on the number of feasible paths (aka, number of columns) in the routing matrix 
+  inx_cov <- ncol(rte_m[[i]])
+  #generate covariance matrix (= unit matrix) for each day
   cov_m[[i]] <- diag(x=1, nrow = inx_cov, ncol = inx_cov)
+  #call out routing matrix for each i-th day 
   rte_mat <- as.matrix(rte_m[[i]])
-  #compute coefficient K in the formula of Kalman-Filter for each day
+  #compute coefficient "K" in the formula of Kalman-Filter for each day, based on the formula on page 37 of the report. 
   kf_vect[[i]] <- cov_m[[i]]%*%t(rte_mat)%*%solve(rte_mat%*%cov_m[[i]]%*%t(rte_mat) + cov_m[[i]])
   print(i)
   print(kf_vect[[i]][nrow(kf_vect[[i]]),])
 }
 
-#define lists to store epsilon = d- A*dh and dh
+#define lists to store error vector epsilon (= x - A*dh) and historical demand dh vector
 eps_vect <- vector("list", 365)
 dh_vect <- vector("list", 365)
-#create lists to store random *vector* d-A*dh
+#create lists to store random *vector* x-A*dh, wherethe currently observed ON/OFF for *all* the routes taken (aka, "x" vector) is not available to us. 
+#We assume the currently observed ON/OFF is not very far different from the historical ON/OFF (= A*d_h) at each stop per each day
 for(i in 1:365){
-  eps_vect[[i]] <- sample.int(5, nrow(kf_vect[[i]]), replace=TRUE)
+  eps_vect[[i]] <- sample.int(10, nrow(kf_vect[[i]]), replace=TRUE)
 }
 
 #install package "limSolve" which contains the "nnls" function to solve for the least-square solutions to Ax = b
 install.packages("limSolve")
 library(limSolve)
-#create lists to store dh
+#create lists to store historical demand (dh) vector for each day
 inx_dh = 0
-#recover dH from overdetermined equation A*dh=x using least-square
+#recover historical demand dh by solving the inconsistent equation A*dh=x with least-square method. Solver package is "nnls"
 for(j in unique(d_zone_ON$Date)){
+  #update the index of each "vector" element in a list dh_vect
   inx_dh <- inx_dh+1
+  #obtain the row index of the first and last elements in the "Date" column that are equal to a fixed date "j"
   lb <- min(which(d_zone_ON$Date == j)) 
   ub <- max(which(d_zone_ON$Date == j)) 
-  #because the system of linear equation here is singular!
-  dh_vect[[inx_dh]] <- nnls(rte_m[[inx_dh]], d_zone_ON$ON[lb:ub]) #recover d_h here
+  #the system of linear equation here is singular!
+  dh_vect[[inx_dh]] <- nnls(rte_m[[inx_dh]], d_zone_ON$ON[lb:ub]) #recover historical demand d_h here
   print(j) #check number of iterations
 }
 
 
-#mean and variance vector of Kalman-Filter
+#mean and variance "list" storage for Kalman-Filter result for each of 365 days
 mean_kf <- vector("list", 365)
 cov_kf  <- vector("list", 365)
-#Compute the mean and variance vector of Kalman-Filter for all 365 days
+#Compute the mean and variance vector of Kalman-Filter for each of the 365 days, using equations (2) and (4) on page 37 & 38 in the report. 
 for(i in 1:365){
+  #compute mean of kalman filter with formula: at a given time t, K*(x-A*d_h) + d_h 
   mean_kf[[i]] <- as.matrix(kf_vect[[i]])%*%as.matrix(eps_vect[[i]]) + as.vector(dh_vect[[i]]$X)
   row_mat <- nrow(as.matrix(kf_vect[[i]])%*%as.matrix(rte_m[[i]]))
   col_mat <- ncol(as.matrix(kf_vect[[i]])%*%as.matrix(rte_m[[i]]))
+  #compute covariance matrix with formula: (I-K*A)*(sigma_2)^2
   cov_kf[[i]] <- (diag(x=1, nrow = row_mat, ncol = col_mat) - as.matrix(kf_vect[[i]])%*%as.matrix(rte_m[[i]]))%*%as.matrix(cov_m[[i]])
+  #keep track of the calculations per loop.
   print(mean_kf[[i]][nrow(mean_kf[[i]]),])
   print(cov_kf[[i]][nrow(cov_kf[[i]]),])
   print(i)
